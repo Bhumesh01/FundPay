@@ -79,7 +79,13 @@ export const signin = async (req: Request,res: Response)=>{
                 }, process.env.JWT_PASSWORD);
                 return res.status(200).json({
                     message: "Successfully signed in",
-                    token: token
+                    token,
+                    user: {
+                        id: user._id,
+                        name: user.name,
+                        email: user.email,
+                        role: user.role
+                    }
                 });
             }
             return res.status(403).json({

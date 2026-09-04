@@ -4,6 +4,7 @@ import { getOrder, makeOrder } from "../controllers/customerControllers/customer
 import { authMiddleware } from "../middleware/middleware.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { createEmiPlan, createProduct, deleteProduct, toggleEmiPlan, updateProduct } from "../controllers/adminControllers/admin.js";
+import { signin, signup } from "../controllers/authControllers/auth.js";
 
 export const router = Router();
 
@@ -12,6 +13,9 @@ router.get("/test", (req, res)=>{
         message: "Router is working"
     });
 });
+
+router.post("/auth/signup", signup);
+router.post("/auth/signin", signin);
 
 router.get("/products", getProducts);
 router.get("/products/:slug", getProductsBySlug);
