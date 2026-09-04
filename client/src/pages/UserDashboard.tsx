@@ -1,18 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  ArrowRight,
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  CreditCard,
-  Package,
-  ShoppingBag,
-  Sparkles,
-  WalletCards,
-} from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, ChevronRight, Clock3, CreditCard, Package, Sparkles, WalletCards } from "lucide-react";
 
 interface Product {
   id: string;
@@ -41,10 +31,15 @@ interface EMIPlan {
 
 interface Order {
   id: string;
-  product: Product | null;
-  variant: Variant | null;
-  emiPlan: EMIPlan | null;
+  product: Product;
+  variant: Variant;
+  emiPlan: EMIPlan;
   purchasePrice: number;
+
+  // DB-backed payment state
+  paidEMIs: number;
+  paidAmount: number;
+
   startDate: string;
   nextInstallmentDate: string;
   status: "active" | "completed" | "cancelled";
@@ -75,34 +70,10 @@ const formatDate = (date: string) => {
   });
 };
 
-const getGreeting = () => {
-  const hour = new Date().getHours();
-
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-};
-
-const getMonthsElapsed = (startDate: string) => {
-  const start = new Date(startDate);
-  const now = new Date();
-
-  let months =
-    (now.getFullYear() - start.getFullYear()) * 12 +
-    (now.getMonth() - start.getMonth());
-
-  if (now.getDate() < start.getDate()) {
-    months -= 1;
-  }
-
-  return Math.max(0, months);
-};
-
 export default function UserDashboard() {
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState<Order[]>([]);
-  const [userName, setUserName] = useState("there");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -110,23 +81,10 @@ export default function UserDashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
 
     if (!token) {
       navigate("/signin");
       return;
-    }
-
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-
-        if (parsedUser?.name) {
-          setUserName(parsedUser.name);
-        }
-      } catch {
-        console.log("Unable to parse stored user");
-      }
     }
 
     const fetchOrders = async () => {
@@ -147,7 +105,10 @@ export default function UserDashboard() {
       } catch (err: any) {
         console.error("Error fetching orders:", err);
 
-        if (err?.response?.status === 401 || err?.response?.status === 403) {
+        if (
+          err?.response?.status === 401 ||
+          err?.response?.status === 403
+        ) {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
           navigate("/signin");
@@ -178,49 +139,77 @@ export default function UserDashboard() {
 
   const activeOrder = activeOrders[0] || null;
 
+  /*
+   * Total monthly EMI for all active orders.
+   */
   const totalMonthlyEMI = useMemo(() => {
     return activeOrders.reduce((total, order) => {
       return total + (order.emiPlan?.monthlyAmount || 0);
     }, 0);
   }, [activeOrders]);
 
+  /*
+   * Outstanding amount is calculated from the
+   * actual payment state returned by MongoDB.
+   *
+   * No date-based estimation.
+   */
   const estimatedOutstanding = useMemo(() => {
     return activeOrders.reduce((total, order) => {
       if (!order.emiPlan) {
-        return total + order.purchasePrice;
+        return (
+          total +
+          Math.max(
+            order.purchasePrice - (order.paidAmount || 0),
+            0
+          )
+        );
       }
 
-      const elapsedMonths = getMonthsElapsed(order.startDate);
+      const paidEMIs = Math.max(order.paidEMIs || 0, 0);
 
-      const paidEstimate = Math.min(
-        elapsedMonths * order.emiPlan.monthlyAmount,
-        order.purchasePrice
+      const remainingEMIs = Math.max(
+        order.emiPlan.tenureMonths - paidEMIs,
+        0
       );
 
-      return total + Math.max(order.purchasePrice - paidEstimate, 0);
+      const remainingAmount =
+        remainingEMIs * order.emiPlan.monthlyAmount;
+
+      return total + remainingAmount;
     }, 0);
   }, [activeOrders]);
 
+  /*
+   * EMI progress comes directly from paidEMIs.
+   */
   const activeProgress = useMemo(() => {
     if (!activeOrder?.emiPlan) return 0;
 
-    const elapsedMonths = getMonthsElapsed(activeOrder.startDate);
+    const paidEMIs = Math.max(activeOrder.paidEMIs || 0, 0);
+
+    if (activeOrder.emiPlan.tenureMonths <= 0) {
+      return 0;
+    }
 
     return Math.min(
       Math.round(
-        (elapsedMonths / activeOrder.emiPlan.tenureMonths) * 100
+        (paidEMIs / activeOrder.emiPlan.tenureMonths) * 100
       ),
       100
     );
   }, [activeOrder]);
 
+  /*
+   * Remaining months comes directly from the DB-backed
+   * paidEMIs value.
+   */
   const remainingMonths = useMemo(() => {
     if (!activeOrder?.emiPlan) return 0;
 
-    const elapsedMonths = getMonthsElapsed(activeOrder.startDate);
-
     return Math.max(
-      activeOrder.emiPlan.tenureMonths - elapsedMonths,
+      activeOrder.emiPlan.tenureMonths -
+        (activeOrder.paidEMIs || 0),
       0
     );
   }, [activeOrder]);
@@ -229,39 +218,9 @@ export default function UserDashboard() {
 
   return (
     <main className="min-h-screen bg-[#f7f7fb] text-slate-900">
-      {/* <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-600">
-                <Sparkles className="h-4 w-4" />
-                <span>FundPay Dashboard</span>
-              </div>
-
-              <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-                {getGreeting()}, {userName}
-                <span className="ml-2">👋</span>
-              </h1>
-
-              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
-                Manage your purchases and keep track of your
-                investment-backed EMI plans.
-              </p>
-            </div>
-
-            <Link
-              to="/products"
-              className="group inline-flex w-fit items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm shadow-violet-200 transition hover:bg-violet-700 hover:shadow-md"
-            >
-              <ShoppingBag className="h-4 w-4" />
-              Explore Products
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </div>
-        </div>
-      </section> */}
-
       <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
+
+        {/* ERROR */}
         {error && (
           <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
             <div className="flex items-start gap-3">
@@ -273,7 +232,10 @@ export default function UserDashboard() {
                 <p className="font-semibold text-red-900">
                   Unable to load dashboard
                 </p>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
+
+                <p className="mt-1 text-sm text-red-700">
+                  {error}
+                </p>
               </div>
             </div>
           </div>
@@ -283,6 +245,10 @@ export default function UserDashboard() {
           <DashboardSkeleton />
         ) : (
           <>
+            {/* =====================================================
+                ACTIVE PURCHASE
+            ===================================================== */}
+
             {activeOrder ? (
               <section className="mb-10">
                 <div className="mb-4 flex items-end justify-between">
@@ -307,11 +273,12 @@ export default function UserDashboard() {
                   remainingMonths={remainingMonths}
                 />
               </section>
-            ) : (
-              <></>
-            )}
+            ) : null}
 
-        
+            {/* =====================================================
+                OVERVIEW
+            ===================================================== */}
+
             <section className="mb-10">
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
@@ -343,7 +310,9 @@ export default function UserDashboard() {
                   helper={
                     activeOrders.length > 0
                       ? `${activeOrders.length} active EMI ${
-                          activeOrders.length === 1 ? "plan" : "plans"
+                          activeOrders.length === 1
+                            ? "plan"
+                            : "plans"
                         }`
                       : "No active EMI plans"
                   }
@@ -352,11 +321,11 @@ export default function UserDashboard() {
 
                 <StatCard
                   icon={<WalletCards className="h-5 w-5" />}
-                  label="Estimated Remaining"
+                  label="Remaining"
                   value={formatCurrency(estimatedOutstanding)}
                   helper={
                     activeOrders.length > 0
-                      ? "Based on active plans"
+                      ? "Based on current payment state"
                       : "No outstanding purchases"
                   }
                   iconClass="bg-amber-50 text-amber-600"
@@ -371,6 +340,11 @@ export default function UserDashboard() {
                 />
               </div>
             </section>
+
+            {/* =====================================================
+                PURCHASE HISTORY
+            ===================================================== */}
+
             <section className="mb-10">
               <div className="mb-4 flex items-end justify-between">
                 <div>
@@ -386,7 +360,9 @@ export default function UserDashboard() {
                 {orders.length > 0 && (
                   <span className="text-sm font-medium text-slate-400">
                     {orders.length}{" "}
-                    {orders.length === 1 ? "purchase" : "purchases"}
+                    {orders.length === 1
+                      ? "purchase"
+                      : "purchases"}
                   </span>
                 )}
               </div>
@@ -395,7 +371,10 @@ export default function UserDashboard() {
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="divide-y divide-slate-100">
                     {recentOrders.map((order) => (
-                      <OrderRow key={order.id} order={order} />
+                      <OrderRow
+                        key={order.id}
+                        order={order}
+                      />
                     ))}
                   </div>
                 </div>
@@ -410,8 +389,8 @@ export default function UserDashboard() {
                   </h3>
 
                   <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                    Your investment-backed purchases will appear here
-                    once you make your first purchase.
+                    Your investment-backed purchases will appear
+                    here once you make your first purchase.
                   </p>
 
                   <Link
@@ -425,12 +404,14 @@ export default function UserDashboard() {
               )}
             </section>
 
-            {/* -----------------------------------------------------
+            {/* =====================================================
                 BOTTOM CTA
-            ----------------------------------------------------- */}
+            ===================================================== */}
+
             <section className="overflow-hidden rounded-3xl bg-slate-950">
               <div className="relative px-6 py-8 sm:px-10 sm:py-10">
                 <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-600/20 blur-3xl" />
+
                 <div className="absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
 
                 <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -445,8 +426,8 @@ export default function UserDashboard() {
                     </h2>
 
                     <p className="mt-2 text-sm leading-6 text-slate-400">
-                      Explore products and choose an EMI plan that works
-                      for you.
+                      Explore products and choose an EMI plan that
+                      works for you.
                     </p>
                   </div>
 
@@ -480,6 +461,8 @@ function ActivePurchaseCard({
   progress: number;
   remainingMonths: number;
 }) {
+  const navigate = useNavigate();
+
   const product = order.product;
   const variant = order.variant;
   const emi = order.emiPlan;
@@ -487,8 +470,12 @@ function ActivePurchaseCard({
   return (
     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
       <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
-        {/* Product */}
-        <div className="relative flex min-h-[300px] items-center justify-center overflow-hidden bg-[#f5f5f7] p-8 sm:p-10">
+
+        {/* =====================================================
+            IMAGE
+        ===================================================== */}
+
+        <div className="relative flex min-h-75 items-center justify-center overflow-hidden bg-[#f5f5f7] p-8 sm:p-10">
           <div className="absolute left-6 top-6">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -500,7 +487,7 @@ function ActivePurchaseCard({
             <img
               src={variant.image}
               alt={product?.name || "Product"}
-              className="relative z-10 max-h-[260px] w-full max-w-[360px] object-contain drop-shadow-[0_20px_25px_rgba(15,23,42,0.12)]"
+              className="relative z-10 max-h-65 w-full max-w-90 object-contain drop-shadow-[0_20px_25px_rgba(15,23,42,0.12)]"
             />
           ) : (
             <div className="flex h-48 w-48 items-center justify-center rounded-3xl bg-white text-slate-300">
@@ -509,26 +496,51 @@ function ActivePurchaseCard({
           )}
         </div>
 
-        {/* Details */}
+        {/* =====================================================
+            DETAILS
+        ===================================================== */}
+
         <div className="flex flex-col justify-center p-6 sm:p-8 lg:p-10">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">
-              Your purchase
-            </p>
 
-            <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-              {product?.name || "Product"}
-            </h3>
+          {/* PRODUCT TITLE + ARROW */}
 
-            {variant && (
-              <p className="mt-2 text-sm text-slate-500">
-                {variant.color} <span className="mx-1.5">·</span>{" "}
-                {variant.storage}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-600">
+                Your purchase
               </p>
-            )}
+
+              <h3 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+                {product?.name || "Product"}
+              </h3>
+
+              {variant && (
+                <p className="mt-2 text-sm text-slate-500">
+                  {variant.color}
+                  <span className="mx-1.5">·</span>
+                  {variant.storage}
+                </p>
+              )}
+            </div>
+
+            {/* ONLY THIS ARROW OPENS EMI DETAILS */}
+
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/dashboard/emi/${order.id}`)
+              }
+              aria-label="View EMI details"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 transition hover:bg-violet-100 hover:text-violet-700"
+            >
+              <ArrowRight className="h-5 w-5" />
+            </button>
           </div>
 
-          {/* EMI */}
+          {/* =====================================================
+              EMI
+          ===================================================== */}
+
           <div className="mt-7 rounded-2xl bg-slate-50 p-5">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -537,7 +549,9 @@ function ActivePurchaseCard({
                 </p>
 
                 <p className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-                  {emi ? formatCurrency(emi.monthlyAmount) : "—"}
+                  {emi
+                    ? formatCurrency(emi.monthlyAmount)
+                    : "—"}
                 </p>
               </div>
 
@@ -555,7 +569,10 @@ function ActivePurchaseCard({
             </div>
           </div>
 
-          {/* Progress */}
+          {/* =====================================================
+              PROGRESS
+          ===================================================== */}
+
           {emi && (
             <div className="mt-6">
               <div className="mb-2 flex items-center justify-between text-xs">
@@ -571,25 +588,30 @@ function ActivePurchaseCard({
               <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                 <div
                   className="h-full rounded-full bg-violet-600 transition-all duration-500"
-                  style={{ width: `${progress}%` }}
+                  style={{
+                    width: `${progress}%`,
+                  }}
                 />
               </div>
 
               <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
                 <span>
-                  Started {formatDate(order.startDate)}
+                  {order.paidEMIs || 0} of {emi.tenureMonths} EMIs paid
                 </span>
 
                 <span>
                   {remainingMonths > 0
                     ? `${remainingMonths} months remaining`
-                    : "Almost complete"}
+                    : "Completed"}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Bottom information */}
+          {/* =====================================================
+              BOTTOM INFORMATION
+          ===================================================== */}
+
           <div className="mt-7 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6">
             <div>
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -604,11 +626,11 @@ function ActivePurchaseCard({
 
             <div>
               <p className="text-xs text-slate-400">
-                Purchase value
+                Paid amount
               </p>
 
               <p className="mt-1 text-sm font-semibold text-slate-900">
-                {formatCurrency(order.purchasePrice)}
+                {formatCurrency(order.paidAmount || 0)}
               </p>
             </div>
           </div>
@@ -623,6 +645,8 @@ function ActivePurchaseCard({
 ================================================================ */
 
 function OrderRow({ order }: { order: Order }) {
+  const navigate = useNavigate();
+
   const product = order.product;
   const variant = order.variant;
   const emi = order.emiPlan;
@@ -632,10 +656,12 @@ function OrderRow({ order }: { order: Order }) {
       label: "Active",
       className: "bg-emerald-50 text-emerald-700",
     },
+
     completed: {
       label: "Completed",
       className: "bg-blue-50 text-blue-700",
     },
+
     cancelled: {
       label: "Cancelled",
       className: "bg-slate-100 text-slate-500",
@@ -644,9 +670,17 @@ function OrderRow({ order }: { order: Order }) {
 
   const status = statusConfig[order.status];
 
+  const handleViewDetails = () => {
+    navigate(`/dashboard/emi/${order.id}`);
+  };
+
   return (
-    <div className="group flex flex-col gap-4 px-5 py-5 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:px-6">
-      {/* Image */}
+    <div className="group flex w-full flex-col gap-4 px-5 py-5 text-left sm:flex-row sm:items-center sm:px-6">
+
+      {/* =====================================================
+          IMAGE
+      ===================================================== */}
+
       <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#f5f5f7]">
         {variant?.image ? (
           <img
@@ -659,7 +693,10 @@ function OrderRow({ order }: { order: Order }) {
         )}
       </div>
 
-      {/* Main details */}
+      {/* =====================================================
+          MAIN DETAILS
+      ===================================================== */}
+
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="truncate text-sm font-bold text-slate-950 sm:text-base">
@@ -684,21 +721,31 @@ function OrderRow({ order }: { order: Order }) {
         </p>
       </div>
 
-      {/* EMI */}
+      {/* =====================================================
+          EMI
+      ===================================================== */}
+
       <div className="sm:min-w-[140px] sm:text-right">
         {emi ? (
           <>
-            <p className="text-xs text-slate-400">Monthly EMI</p>
+            <p className="text-xs text-slate-400">
+              Monthly EMI
+            </p>
+
             <p className="mt-1 text-sm font-bold text-slate-950">
               {formatCurrency(emi.monthlyAmount)}
             </p>
+
             <p className="mt-0.5 text-xs text-slate-400">
-              {emi.tenureMonths} months
+              {order.paidEMIs || 0}/{emi.tenureMonths} paid
             </p>
           </>
         ) : (
           <>
-            <p className="text-xs text-slate-400">Purchase</p>
+            <p className="text-xs text-slate-400">
+              Purchase
+            </p>
+
             <p className="mt-1 text-sm font-bold text-slate-950">
               {formatCurrency(order.purchasePrice)}
             </p>
@@ -706,10 +753,20 @@ function OrderRow({ order }: { order: Order }) {
         )}
       </div>
 
-      {/* Arrow */}
-      <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-400 transition group-hover:border-violet-200 group-hover:bg-violet-50 group-hover:text-violet-600 sm:flex">
+      {/* =====================================================
+          CLICKABLE ARROW
+      ===================================================== */}
+
+      <button
+        type="button"
+        onClick={handleViewDetails}
+        aria-label={`View EMI details for ${
+          product?.name || "purchase"
+        }`}
+        className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full border border-slate-200 text-slate-400 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600 sm:self-auto"
+      >
         <ChevronRight className="h-4 w-4" />
-      </div>
+      </button>
     </div>
   );
 }
@@ -725,7 +782,7 @@ function StatCard({
   helper,
   iconClass,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string;
   helper: string;
@@ -759,55 +816,15 @@ function StatCard({
 }
 
 /* ================================================================
-   EMPTY PURCHASE STATE
-================================================================ */
-
-function EmptyPurchaseState() {
-  return (
-    <section className="mb-10 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="relative px-6 py-12 text-center sm:px-10 sm:py-14">
-        <div className="absolute -left-20 -top-20 h-48 w-48 rounded-full bg-violet-100/60 blur-3xl" />
-        <div className="absolute -bottom-20 -right-20 h-48 w-48 rounded-full bg-indigo-100/60 blur-3xl" />
-
-        <div className="relative">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
-            <ShoppingBag className="h-7 w-7" />
-          </div>
-
-          <p className="mt-5 text-xs font-bold uppercase tracking-[0.14em] text-violet-600">
-            Your purchases
-          </p>
-
-          <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-            Your first purchase starts here.
-          </h2>
-
-          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">
-            Choose a product, select an EMI plan, and enjoy the
-            flexibility of paying over time.
-          </p>
-
-          <Link
-            to="/products"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm shadow-violet-200 transition hover:bg-violet-700"
-          >
-            Explore Products
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ================================================================
-   LOADING SKELETON
+   DASHBOARD SKELETON
 ================================================================ */
 
 function DashboardSkeleton() {
   return (
     <div className="animate-pulse">
-      {/* Active purchase skeleton */}
+
+      {/* ACTIVE PURCHASE SKELETON */}
+
       <div className="mb-10">
         <div className="mb-4">
           <div className="h-3 w-28 rounded bg-slate-200" />
@@ -829,13 +846,14 @@ function DashboardSkeleton() {
 
               <div className="h-10 rounded bg-slate-100" />
 
-              <div className="h-12 rounded bg-slate-100" />
+              <div className="h-12 rounded-2xl bg-slate-100" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Stats skeleton */}
+      {/* STATS SKELETON */}
+
       <div className="mb-10">
         <div className="mb-4">
           <div className="h-3 w-20 rounded bg-slate-200" />
@@ -852,7 +870,8 @@ function DashboardSkeleton() {
         </div>
       </div>
 
-      {/* Orders skeleton */}
+      {/* ORDERS SKELETON */}
+
       <div>
         <div className="mb-4">
           <div className="h-3 w-28 rounded bg-slate-200" />

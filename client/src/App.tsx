@@ -8,6 +8,7 @@ import ProductDetails from "./pages/ProductDetails";
 import NotFound from "./pages/NotFound";
 import Home from "./pages/Home";
 import Layout from "./components/Layout";
+import EMIDetails from "./pages/EMIDetails";
 
 function App() {
 
@@ -21,6 +22,7 @@ function App() {
           <Route path="/products" element={<Products />} />
           <Route path="/products/:slug" element={<ProductDetails />} />
           <Route path="/dashboard" element={<UserDashboard />} />
+          <Route  path="/dashboard/emi/:orderId"  element={<EMIDetails />}/>
         </Route>
 
 
