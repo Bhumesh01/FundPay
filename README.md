@@ -10,11 +10,9 @@ The project combines a modern shopping experience with an EMI management workflo
 
 ## 🚀 Live Demo
 
-**Frontend:** `https://fund-pay-five.vercel.app/`
+**Frontend:** `[https://fund-pay-five.vercel.app](https://fund-pay-five.vercel.app/)`
 
-**Backend API:** `https://fund-pay-backend.vercel.app/api/v1`
-
-> Replace the two values above after deployment.
+**Backend API:** `[https://fund-pay-backend.vercel.app](https://fund-pay-backend.vercel.app/)`
 
 ---
 
