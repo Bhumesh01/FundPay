@@ -1,11 +1,112 @@
-import { Link } from "react-router-dom";
-import {
-  ArrowRight,
-  ShieldCheck,
-  TrendingUp,
-} from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowRight, ShieldCheck, TrendingUp, Loader2 } from "lucide-react";
+import axios from "axios";
 
 function SignIn() {
+  const navigate = useNavigate();
+
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [errors, setErrors] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [serverError, setServerError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const { name, value } = e.target;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    setErrors((prev) => ({
+      ...prev,
+      [name]: "",
+    }));
+
+    setServerError("");
+  };
+
+  const handleSubmit = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
+    e.preventDefault();
+
+    setErrors({
+      email: "",
+      password: "",
+    });
+
+    setServerError("");
+    setLoading(true);
+
+    try {
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/auth/signin`,
+        formData
+      );
+
+      const { token, user } = response.data;
+
+      // Store authentication details
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+
+      // Redirect based on user role
+      if (user.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const data = error.response?.data;
+
+        /*
+         * Backend validation errors
+         *
+         * Expected response:
+         * {
+         *   emailErrors: ["Invalid email"],
+         *   passwordErrors: ["Password is required"]
+         * }
+         */
+
+        if (data?.emailErrors || data?.passwordErrors) {
+          setErrors({
+            email: data.emailErrors?.[0] || "",
+            password: data.passwordErrors?.[0] || "",
+          });
+        }
+
+        // Invalid credentials / other server error
+        else if (data?.message) {
+          setServerError(data.message);
+        } else {
+          setServerError(
+            "Something went wrong. Please try again."
+          );
+        }
+      } else {
+        setServerError(
+          "Unable to connect to the server."
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="grid min-h-screen lg:grid-cols-2">
@@ -20,7 +121,7 @@ function SignIn() {
             <div>
               <Link
                 to="/"
-                className="text-2xl font-bold tracking-tight text-white"
+                className="cursor-pointer text-2xl font-bold tracking-tight text-white"
               >
                 Fund<span className="text-primary-200">Pay</span>
               </Link>
@@ -80,7 +181,7 @@ function SignIn() {
             <div className="mb-10 lg:hidden">
               <Link
                 to="/"
-                className="text-2xl font-bold tracking-tight text-slate-900"
+                className="cursor-pointer text-2xl font-bold tracking-tight text-slate-900"
               >
                 Fund<span className="text-primary-600">Pay</span>
               </Link>
@@ -97,8 +198,20 @@ function SignIn() {
               </p>
             </div>
 
+            {/* Server Error */}
+            {serverError && (
+              <div className="mb-5 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3">
+                <p className="text-sm font-medium text-danger-600">
+                  {serverError}
+                </p>
+              </div>
+            )}
+
             {/* Form */}
-            <form className="space-y-5">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-5"
+            >
 
               {/* Email */}
               <div>
@@ -115,13 +228,27 @@ function SignIn() {
                   type="email"
                   placeholder="you@example.com"
                   autoComplete="email"
-                  className="input"
+                  value={formData.email}
+                  onChange={handleChange}
+                  disabled={loading}
+                  className={`input ${
+                    errors.email
+                      ? "border-danger-500 focus:border-danger-500 focus:ring-danger-100"
+                      : ""
+                  }`}
                 />
+
+                {errors.email && (
+                  <p className="mt-2 text-xs text-danger-600">
+                    {errors.email}
+                  </p>
+                )}
               </div>
 
               {/* Password */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
+
                   <label
                     htmlFor="password"
                     className="label mb-0"
@@ -129,12 +256,6 @@ function SignIn() {
                     Password
                   </label>
 
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-primary-600 transition-colors hover:text-primary-700"
-                  >
-                    Forgot password?
-                  </button>
                 </div>
 
                 <input
@@ -143,18 +264,40 @@ function SignIn() {
                   type="password"
                   placeholder="Enter your password"
                   autoComplete="current-password"
-                  className="input"
+                  value={formData.password}
+                  onChange={handleChange}
+                  disabled={loading}
+                  className={`input ${
+                    errors.password
+                      ? "border-danger-500 focus:border-danger-500 focus:ring-danger-100"
+                      : ""
+                  }`}
                 />
+
+                {errors.password && (
+                  <p className="mt-2 text-xs text-danger-600">
+                    {errors.password}
+                  </p>
+                )}
               </div>
 
               {/* Submit */}
               <button
                 type="submit"
-                className="btn-primary w-full"
+                disabled={loading}
+                className="btn-primary w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Sign in
-
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign in
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </button>
 
             </form>
@@ -175,7 +318,7 @@ function SignIn() {
               Don't have an account?{" "}
               <Link
                 to="/signup"
-                className="font-semibold text-primary-600 transition-colors hover:text-primary-700"
+                className="cursor-pointer font-semibold text-primary-600 transition-colors hover:text-primary-700"
               >
                 Create account
               </Link>
