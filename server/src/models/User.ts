@@ -6,6 +6,8 @@ const orderSchema = new Schema(
     variantId: { type: Schema.Types.ObjectId, required: true },
     emiPlanId: { type: Schema.Types.ObjectId, ref: "EMIPlan", required: true },
     purchasePrice: { type: Number, required: true},
+    paidEMIs: { type: Number, default: 0 },
+    paidAmount: { type: Number, default: 0 },
     startDate: { type: Date, required: true },
     nextInstallmentDate: { type: Date, required: true },
     status: { type: String, enum: ["active", "completed", "cancelled"], default: "active",},
