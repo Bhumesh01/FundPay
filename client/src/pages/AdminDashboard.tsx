@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Check, CreditCard, Image as ImageIcon, Loader2, Package, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { Check, CreditCard, Home, Image as ImageIcon, Loader2, Package, Pencil, Plus, ShoppingBag, Trash2, Upload, X } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface Variant {
   _id: string;
@@ -140,10 +141,6 @@ function AdminDashboard() {
 
     return fallback;
   };
-
-  /* --------------------------------
-     FETCH PRODUCTS
-  -------------------------------- */
 
   const fetchProducts = async () => {
     try {
@@ -706,7 +703,23 @@ function AdminDashboard() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row flex-wrap">
+            <Link
+              to="/"
+              className="btn-secondary"
+            >
+              <Home className="mr-2 h-4 w-4" />
+              Home
+            </Link>
+
+            <Link
+              to="/products"
+              className="btn-secondary"
+            >
+              <ShoppingBag className="mr-2 h-4 w-4" />
+              Products
+            </Link>
+
             <button
               type="button"
               onClick={openEmiModal}
