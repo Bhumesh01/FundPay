@@ -92,10 +92,25 @@ export async function makeOrder(req: Request, res: Response) {
     await user.save();
 
     const createdOrder = user.orders[user.orders.length - 1];
-
+    if (!createdOrder) {
+      return res.status(500).json({
+        message: "Order was not created",
+      });
+    }
     return res.status(201).json({
       message: "Order created successfully",
-      order: createdOrder,
+      order: {
+        id: createdOrder._id,
+        productId: createdOrder.productId,
+        variantId: createdOrder.variantId,
+        emiPlanId: createdOrder.emiPlanId,
+        purchasePrice: createdOrder.purchasePrice,
+        paidEMIs: createdOrder.paidEMIs,
+        paidAmount: createdOrder.paidAmount,
+        startDate: createdOrder.startDate,
+        nextInstallmentDate: createdOrder.nextInstallmentDate,
+        status: createdOrder.status,
+      },
     });
   } catch (err) {
     console.log(err);
@@ -214,7 +229,7 @@ export async function payEMI(req: Request, res: Response) {
         message: "User not found",
       });
     }
-    if (!orderId || Array.isArray(orderId)) {
+    if ( !orderId || Array.isArray(orderId) || !mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
         message: "Invalid order ID",
       });
@@ -307,7 +322,7 @@ export async function payFullAmount(
         message: "User not found",
       });
     }
-    if (!orderId || Array.isArray(orderId)) {
+    if ( !orderId || Array.isArray(orderId) || !mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
         message: "Invalid order ID",
       });
