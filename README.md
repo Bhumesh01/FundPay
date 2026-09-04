@@ -12,9 +12,7 @@ The project combines a modern shopping experience with an EMI management workflo
 
 **Frontend:** `https://fund-pay-five.vercel.app/`
 
-**Backend API:** `https://fund-pay-backend.vercel.app/api/v1`
-
-> Replace the two values above after deployment.
+**Backend API:** `https://fund-pay-backend.vercel.app/`
 
 ---
 
@@ -822,28 +820,6 @@ Start the backend:
 ```bash
 npm run dev
 ```
-
----
-
-# 🌱 Database Seed
-
-The project should be populated with demo products, variants, EMI plans, and users before demonstrating the application.
-
-If a seed script is configured in the backend, run the seed command from:
-
-```text
-server/
-```
-
-For example:
-
-```bash
-npm run seed
-```
-
-> If your `package.json` uses a different seed script, replace the command above with the exact script from `server/package.json`.
-
----
 
 # 🚀 Deployment
 
