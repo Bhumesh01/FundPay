@@ -1,10 +1,27 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, ShieldCheck, TrendingUp, Loader2 } from "lucide-react";
+import {
+  Link,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
+import {
+  ArrowRight,
+  ShieldCheck,
+  TrendingUp,
+  Loader2,
+} from "lucide-react";
 import axios from "axios";
+
+interface PendingOrder {
+  productId: string;
+  variantId: string;
+  emiPlanId: string;
+  purchasePrice: number;
+}
 
 function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -18,6 +35,10 @@ function SignIn() {
 
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  /* ==========================================================
+     FORM CHANGE
+  ========================================================== */
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement>
@@ -37,6 +58,35 @@ function SignIn() {
     setServerError("");
   };
 
+  /* ==========================================================
+     CREATE PENDING ORDER
+  ========================================================== */
+
+  const createPendingOrder = async (
+    pendingOrder: PendingOrder,
+    token: string
+  ) => {
+    const response = await axios.post(
+      `${import.meta.env.VITE_API_URL}/orders`,
+      {
+        productId: pendingOrder.productId,
+        variantId: pendingOrder.variantId,
+        emiPlanId: pendingOrder.emiPlanId,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return response.data;
+  };
+
+  /* ==========================================================
+     SUBMIT
+  ========================================================== */
+
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -51,6 +101,10 @@ function SignIn() {
     setLoading(true);
 
     try {
+      /* ======================================================
+         SIGN IN
+      ====================================================== */
+
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/auth/signin`,
         formData
@@ -58,17 +112,81 @@ function SignIn() {
 
       const { token, user } = response.data;
 
-      // Store authentication details
+      /* ======================================================
+         STORE AUTHENTICATION
+      ====================================================== */
+
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
 
-      // Redirect based on user role
+      /* ======================================================
+         CHECK FOR PENDING ORDER
+      ====================================================== */
+
+      const state = location.state as {
+        pendingOrder?: PendingOrder;
+        from?: string;
+      } | null;
+
+      const pendingOrder = state?.pendingOrder;
+
+      /* ======================================================
+         IF USER CAME FROM BUY / PROCEED
+      ====================================================== */
+
+      if (pendingOrder) {
+        try {
+          await createPendingOrder(
+            pendingOrder,
+            token
+          );
+
+          /*
+           * Order successfully created.
+           * Take the user directly to dashboard.
+           */
+
+          navigate("/dashboard", {
+            replace: true,
+          });
+
+          return;
+        } catch (error) {
+          console.error(
+            "Unable to create pending order:",
+            error
+          );
+
+          if (axios.isAxiosError(error)) {
+            setServerError(
+              error.response?.data?.message ||
+                "Login successful, but we couldn't place your order."
+            );
+          } else {
+            setServerError(
+              "Login successful, but we couldn't place your order."
+            );
+          }
+
+          return;
+        }
+      }
+
+      /* ======================================================
+         NORMAL LOGIN
+      ====================================================== */
+
       if (user.role === "admin") {
         navigate("/admin");
       } else {
         navigate("/dashboard");
       }
+
     } catch (error) {
+      /* ======================================================
+         ERROR HANDLING
+      ====================================================== */
+
       if (axios.isAxiosError(error)) {
         const data = error.response?.data;
 
@@ -82,27 +200,38 @@ function SignIn() {
          * }
          */
 
-        if (data?.emailErrors || data?.passwordErrors) {
+        if (
+          data?.emailErrors ||
+          data?.passwordErrors
+        ) {
           setErrors({
             email: data.emailErrors?.[0] || "",
-            password: data.passwordErrors?.[0] || "",
+            password:
+              data.passwordErrors?.[0] || "",
           });
         }
 
-        // Invalid credentials / other server error
+        /* Invalid credentials / other server error */
+
         else if (data?.message) {
           setServerError(data.message);
-        } else {
+        }
+
+        else {
           setServerError(
             "Something went wrong. Please try again."
           );
         }
-      } else {
+      }
+
+      else {
         setServerError(
           "Unable to connect to the server."
         );
       }
-    } finally {
+    }
+
+    finally {
       setLoading(false);
     }
   };
@@ -111,23 +240,30 @@ function SignIn() {
     <main className="min-h-screen bg-slate-50">
       <div className="grid min-h-screen lg:grid-cols-2">
 
-        {/* Left - Branding */}
+        {/* ======================================================
+            LEFT - BRANDING
+        ====================================================== */}
+
         <section className="relative hidden overflow-hidden bg-primary-700 lg:flex">
           <div className="absolute inset-0 bg-primary-gradient" />
 
           <div className="relative z-10 flex w-full flex-col justify-between p-12 xl:p-16">
 
             {/* Logo */}
+
             <div>
               <Link
                 to="/"
                 className="cursor-pointer text-2xl font-bold tracking-tight text-white"
               >
-                Fund<span className="text-primary-200">Pay</span>
+                Fund<span className="text-primary-200">
+                  Pay
+                </span>
               </Link>
             </div>
 
             {/* Main Content */}
+
             <div className="max-w-lg">
 
               <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-sm">
@@ -145,27 +281,34 @@ function SignIn() {
               </h1>
 
               <p className="mt-6 max-w-md text-base leading-7 text-primary-100">
-                Manage your purchases, explore flexible EMI plans,
-                and keep your finances moving forward.
+                Manage your purchases, explore flexible
+                EMI plans, and keep your finances moving
+                forward.
               </p>
 
               {/* Benefits */}
+
               <div className="mt-10 space-y-4">
 
                 <div className="flex items-center gap-3 text-primary-100">
                   <ShieldCheck className="h-5 w-5 text-primary-200" />
-                  <span>Secure and transparent payments</span>
+                  <span>
+                    Secure and transparent payments
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-3 text-primary-100">
                   <TrendingUp className="h-5 w-5 text-primary-200" />
-                  <span>Flexible investment-backed EMIs</span>
+                  <span>
+                    Flexible investment-backed EMIs
+                  </span>
                 </div>
 
               </div>
             </div>
 
             {/* Footer */}
+
             <p className="text-sm text-primary-200">
               © 2026 FundPay. All rights reserved.
             </p>
@@ -173,22 +316,31 @@ function SignIn() {
           </div>
         </section>
 
-        {/* Right - Login */}
+        {/* ======================================================
+            RIGHT - LOGIN
+        ====================================================== */}
+
         <section className="flex items-center justify-center px-5 py-10 sm:px-8">
+
           <div className="w-full max-w-md">
 
             {/* Mobile Logo */}
+
             <div className="mb-10 lg:hidden">
               <Link
                 to="/"
                 className="cursor-pointer text-2xl font-bold tracking-tight text-slate-900"
               >
-                Fund<span className="text-primary-600">Pay</span>
+                Fund<span className="text-primary-600">
+                  Pay
+                </span>
               </Link>
             </div>
 
             {/* Heading */}
+
             <div className="mb-8">
+
               <h2 className="text-3xl font-bold tracking-tight text-slate-900">
                 Welcome back
               </h2>
@@ -196,25 +348,32 @@ function SignIn() {
               <p className="mt-2 text-sm text-slate-500">
                 Sign in to continue to your FundPay account.
               </p>
+
             </div>
 
             {/* Server Error */}
+
             {serverError && (
               <div className="mb-5 rounded-xl border border-danger-100 bg-danger-50 px-4 py-3">
+
                 <p className="text-sm font-medium text-danger-600">
                   {serverError}
                 </p>
+
               </div>
             )}
 
             {/* Form */}
+
             <form
               onSubmit={handleSubmit}
               className="space-y-5"
             >
 
               {/* Email */}
+
               <div>
+
                 <label
                   htmlFor="email"
                   className="label"
@@ -243,10 +402,13 @@ function SignIn() {
                     {errors.email}
                   </p>
                 )}
+
               </div>
 
               {/* Password */}
+
               <div>
+
                 <div className="mb-2 flex items-center justify-between">
 
                   <label
@@ -279,14 +441,17 @@ function SignIn() {
                     {errors.password}
                   </p>
                 )}
+
               </div>
 
               {/* Submit */}
+
               <button
                 type="submit"
                 disabled={loading}
                 className="btn-primary w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
               >
+
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -298,12 +463,15 @@ function SignIn() {
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
+
               </button>
 
             </form>
 
             {/* Divider */}
+
             <div className="my-8 flex items-center gap-4">
+
               <div className="h-px flex-1 bg-slate-200" />
 
               <span className="text-xs text-slate-400">
@@ -311,29 +479,40 @@ function SignIn() {
               </span>
 
               <div className="h-px flex-1 bg-slate-200" />
+
             </div>
 
             {/* Signup */}
+
             <p className="text-center text-sm text-slate-500">
+
               Don't have an account?{" "}
+
               <Link
                 to="/signup"
+                state={location.state}
                 className="cursor-pointer font-semibold text-primary-600 transition-colors hover:text-primary-700"
               >
                 Create account
               </Link>
+
             </p>
 
             {/* Security */}
+
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400">
+
               <ShieldCheck className="h-4 w-4" />
 
               <span>
-                Your account is protected with secure authentication
+                Your account is protected with secure
+                authentication
               </span>
+
             </div>
 
           </div>
+
         </section>
 
       </div>

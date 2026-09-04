@@ -1,17 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useLocation } from "react-router-dom";
 import axios from "axios";
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  CreditCard,
-  IndianRupee,
-  Loader2,
-  ShieldCheck,
-  ShoppingBag,
-  Sparkles,
-} from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CreditCard, IndianRupee, Loader2, ShieldCheck, ShoppingBag, Sparkles } from "lucide-react";
 
 interface ProductVariant {
   _id: string;
@@ -22,7 +12,12 @@ interface ProductVariant {
   discount?: number;
   image: string;
 }
-
+interface PendingOrder {
+  productId: string;
+  variantId: string;
+  emiPlanId: string;
+  purchasePrice: number;
+}
 interface Product {
   _id: string;
   name: string;
@@ -70,6 +65,7 @@ const getDiscountPercent = (mrp: number, price: number) => {
 export default function ProductDetails() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [product, setProduct] = useState<Product | null>(null);
 
@@ -86,11 +82,98 @@ export default function ProductDetails() {
 
   const [error, setError] = useState("");
 
-  // =========================================================
-  // FETCH PRODUCT
-  // GET /products/:slug
-  // =========================================================
+  const handleProceed = () => {
+    if (!product || !selectedVariant || !selectedPlan) {
+      return;
+    }
+  
+    const token = localStorage.getItem("token");
+  
+    const pendingOrder: PendingOrder = {
+      productId: product._id,
+      variantId: selectedVariant._id,
+      emiPlanId: selectedPlan._id,
+      purchasePrice: selectedVariant.price,
+    };
+  
+    // User is already logged in
+    if (token) {
+      createOrder(pendingOrder);
+      return;
+    }
+  
+    // User is not logged in
+    navigate("/signin", {
+      state: {
+        from: location.pathname,
+        pendingOrder,
+      },
+    });
+  };
+  const createOrder = async (order: PendingOrder) => {
+  try {
+    const token = localStorage.getItem("token");
 
+    if (!token) {
+      navigate("/signin", {
+        state: {
+          from: location.pathname,
+          pendingOrder: order,
+        },
+      });
+
+      return;
+    }
+
+    const response = await axios.post(
+      `${import.meta.env.VITE_API_URL}/orders`,
+      {
+        productId: order.productId,
+        variantId: order.variantId,
+        emiPlanId: order.emiPlanId,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    console.log("Order created:", response.data);
+
+    navigate("/dashboard");
+  } catch (error) {
+    console.error("Unable to create order:", error);
+
+    if (axios.isAxiosError(error)) {
+      if (
+        error.response?.status === 401 ||
+        error.response?.status === 403
+      ) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+
+        navigate("/signin", {
+          state: {
+            from: location.pathname,
+            pendingOrder: order,
+          },
+        });
+
+        return;
+      }
+
+      alert(
+        error.response?.data?.message ||
+          "Unable to place order. Please try again."
+      );
+
+      return;
+    }
+
+    alert("Something went wrong while placing the order.");
+  }
+};
   useEffect(() => {
     if (!slug) {
       setError("Product not found.");
@@ -133,11 +216,6 @@ export default function ProductDetails() {
     fetchProduct();
   }, [slug]);
 
-  // =========================================================
-  // FETCH EMI PLANS
-  // GET /emi-plans/product/:productId
-  // =========================================================
-
   useEffect(() => {
     if (!product?._id) return;
 
@@ -175,10 +253,6 @@ export default function ProductDetails() {
     fetchEMIPlans();
   }, [product?._id]);
 
-  // =========================================================
-  // SELECTED VARIANT
-  // =========================================================
-
   const selectedVariant = useMemo(() => {
     if (!product) return undefined;
 
@@ -190,9 +264,6 @@ export default function ProductDetails() {
     );
   }, [product, selectedVariantId]);
 
-  // =========================================================
-  // SELECTED EMI PLAN
-  // =========================================================
 
   const selectedPlan = useMemo(() => {
     return emiPlans.find(
@@ -201,9 +272,6 @@ export default function ProductDetails() {
     );
   }, [emiPlans, selectedPlanId]);
 
-  // =========================================================
-  // DISCOUNT
-  // =========================================================
 
   const discountPercent = selectedVariant
     ? selectedVariant.discount ??
@@ -212,47 +280,6 @@ export default function ProductDetails() {
         selectedVariant.price
       )
     : 0;
-
-  // =========================================================
-  // PROCEED / BUY NOW
-  // =========================================================
-
-  const handleProceed = () => {
-    if (!product || !selectedVariant) {
-      return;
-    }
-
-    // EMI purchase requires an EMI plan
-    if (purchaseMode === "emi" && !selectedPlan) {
-      return;
-    }
-
-    navigate("/signin", {
-      state: {
-        from: `/products/${product.slug}`,
-
-        purchase: {
-          productId: product._id,
-
-          variantId: selectedVariant._id,
-
-          emiPlanId:
-            purchaseMode === "emi"
-              ? selectedPlan?._id
-              : null,
-
-          purchasePrice: selectedVariant.price,
-
-          purchaseMode,
-        },
-      },
-    });
-  };
-
-  // =========================================================
-  // LOADING PRODUCT
-  // =========================================================
-
   if (loadingProduct) {
     return (
       <main className="min-h-screen bg-slate-50">
@@ -267,9 +294,6 @@ export default function ProductDetails() {
     );
   }
 
-  // =========================================================
-  // PRODUCT NOT FOUND
-  // =========================================================
 
   if (!product) {
     return (
@@ -303,18 +327,11 @@ export default function ProductDetails() {
     );
   }
 
-  // =========================================================
-  // MAIN UI
-  // =========================================================
 
   return (
     <main className="min-h-screen bg-slate-50">
 
       <div className="page-container py-6 sm:py-8">
-
-        {/* =================================================
-            BACK BUTTON
-        ================================================= */}
 
         <Link
           to="/products"
@@ -325,27 +342,16 @@ export default function ProductDetails() {
           Back to products
         </Link>
 
-        {/* =================================================
-            ERROR
-        ================================================= */}
-
         {error && (
           <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {/* =================================================
-            PRODUCT SECTION
-        ================================================= */}
-
         <section className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr]">
 
-          {/* =================================================
-              PRODUCT IMAGE
-          ================================================= */}
 
-          <div className="card flex min-h-[420px] items-center justify-center overflow-hidden bg-white p-6 sm:min-h-[560px] sm:p-10">
+          <div className="card flex min-h-105  items-center justify-center overflow-hidden bg-white p-6 sm:min-h-[560px] sm:p-10">
 
             <div className="relative flex h-full w-full items-center justify-center">
 
@@ -363,7 +369,7 @@ export default function ProductDetails() {
                 <img
                   src={selectedVariant.image}
                   alt={`${product.name} ${selectedVariant.color}`}
-                  className="max-h-[430px] w-full object-contain transition duration-300"
+                  className="max-h-107.5 w-full object-contain transition duration-300"
                 />
               ) : (
                 <div className="flex h-80 w-full items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
@@ -373,10 +379,6 @@ export default function ProductDetails() {
 
             </div>
           </div>
-
-          {/* =================================================
-              PRODUCT INFORMATION
-          ================================================= */}
 
           <div className="flex flex-col">
 
@@ -403,10 +405,6 @@ export default function ProductDetails() {
                 {product.description}
               </p>
             )}
-
-            {/* =================================================
-                VARIANT SELECTION
-            ================================================= */}
 
             <div className="mt-7">
 
@@ -492,9 +490,6 @@ export default function ProductDetails() {
               </div>
             </div>
 
-            {/* =================================================
-                PRICE
-            ================================================= */}
 
             {selectedVariant && (
               <div className="mt-6 flex items-end gap-3">
@@ -529,9 +524,6 @@ export default function ProductDetails() {
               </div>
             )}
 
-            {/* =================================================
-                PAYMENT METHOD
-            ================================================= */}
 
             <div className="mt-8">
 
@@ -545,9 +537,6 @@ export default function ProductDetails() {
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
 
-                {/* =================================================
-                    EMI OPTION
-                ================================================= */}
 
                 <button
                   type="button"
@@ -592,10 +581,6 @@ export default function ProductDetails() {
                   </div>
 
                 </button>
-
-                {/* =================================================
-                    FULL PAYMENT OPTION
-                ================================================= */}
 
                 <button
                   type="button"
@@ -643,11 +628,6 @@ export default function ProductDetails() {
 
               </div>
             </div>
-
-            {/* =================================================
-                EMI PLANS
-                ONLY SHOW WHEN EMI IS SELECTED
-            ================================================= */}
 
             {purchaseMode === "emi" && (
               <div className="mt-8">
@@ -870,9 +850,6 @@ export default function ProductDetails() {
                     </>
                   )}
 
-                {/* =================================================
-                    FULL PAYMENT SUMMARY
-                ================================================= */}
 
                 {purchaseMode === "full" && (
                   <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
@@ -888,9 +865,6 @@ export default function ProductDetails() {
                   </div>
                 )}
 
-                {/* =================================================
-                    ACTION BUTTON
-                ================================================= */}
 
                 <button
                   type="button"
@@ -910,8 +884,6 @@ export default function ProductDetails() {
 
                 </button>
 
-                {/* Security */}
-
                 <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
 
                   <ShieldCheck className="h-4 w-4" />
@@ -927,13 +899,7 @@ export default function ProductDetails() {
 
         </section>
 
-        {/* =================================================
-            TRUST FEATURES
-        ================================================= */}
-
         <section className="mt-8 grid gap-4 sm:grid-cols-3">
-
-          {/* Flexible EMI */}
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
 
@@ -949,7 +915,6 @@ export default function ProductDetails() {
 
           </div>
 
-          {/* Full Payment */}
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
 
@@ -965,7 +930,6 @@ export default function ProductDetails() {
 
           </div>
 
-          {/* Security */}
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
 
