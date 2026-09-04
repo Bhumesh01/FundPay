@@ -6,6 +6,8 @@ import UserDashboard from "./pages/UserDashboard";
 import Products from "./pages/Products";
 import ProductDetails from "./pages/ProductDetails";
 import NotFound from "./pages/NotFound";
+import Home from "./pages/Home";
+import Layout from "./components/Layout";
 
 function App() {
 
@@ -13,24 +15,25 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* Authentication */}
+        {/* Pages with Navbar + Footer */}
+        <Route element={<Layout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/products" element={<Products />} />
+          <Route path="/products/:slug" element={<ProductDetails />} />
+          <Route path="/dashboard" element={<UserDashboard />} />
+        </Route>
+
+
+        {/* Auth pages */}
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
+
 
         {/* Admin */}
         <Route path="/admin" element={<AdminDashboard />} />
 
-        {/* User */}
-        <Route path="/dashboard" element={<UserDashboard />} />
 
-        {/* Products */}
-        <Route path="/products" element={<Products />} />
-        <Route
-          path="/products/:slug"
-          element={<ProductDetails />}
-        />
-
-        {/* Error Boundary */}
+        {/* 404 */}
         <Route path="*" element={<NotFound />} />
 
       </Routes>
