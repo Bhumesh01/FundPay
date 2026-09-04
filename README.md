@@ -821,28 +821,6 @@ Start the backend:
 npm run dev
 ```
 
----
-
-# 🌱 Database Seed
-
-The project should be populated with demo products, variants, EMI plans, and users before demonstrating the application.
-
-If a seed script is configured in the backend, run the seed command from:
-
-```text
-server/
-```
-
-For example:
-
-```bash
-npm run seed
-```
-
-> If your `package.json` uses a different seed script, replace the command above with the exact script from `server/package.json`.
-
----
-
 # 🚀 Deployment
 
 FundPay is structured as two Vercel projects from the same GitHub repository.
