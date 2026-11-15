@@ -3,7 +3,7 @@ import { getEmiPlans, getProducts, getProductsBySlug } from "../controllers/publ
 import { getOrder, makeOrder, payEMI, payFullAmount } from "../controllers/customerControllers/customer.js";
 import { authMiddleware } from "../middleware/middleware.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { createEmiPlan, createProduct, deleteProduct, toggleEmiPlan, updateProduct } from "../controllers/adminControllers/admin.js";
+import { listEmiPlans, createEmiPlan, createProduct, deleteProduct, toggleEmiPlan, updateProduct } from "../controllers/adminControllers/admin.js";
 import { signin, signup } from "../controllers/authControllers/auth.js";
 
 export const router = Router();
@@ -31,3 +31,4 @@ router.put("/admin/products/:id", authMiddleware, requireAdmin, updateProduct);
 router.delete("/admin/products/:id", authMiddleware, requireAdmin, deleteProduct);
 router.post("/admin/emi-plans", authMiddleware, requireAdmin, createEmiPlan);
 router.patch("/admin/emi-plans/:id/toggle", authMiddleware, requireAdmin, toggleEmiPlan);
+router.get("/admin/emi-plans", authMiddleware, requireAdmin, listEmiPlans);

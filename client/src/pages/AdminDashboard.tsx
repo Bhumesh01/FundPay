@@ -23,6 +23,7 @@ interface Product {
 interface EMIPlan {
   _id: string;
   productId: string;
+  variantId: string;
   tenureMonths: number;
   monthlyAmount: number;
   interestRate: number;
@@ -31,6 +32,7 @@ interface EMIPlan {
 }
 
 interface ProductVariantForm {
+  _id?: string;
   color: string;
   storage: string;
   mrp: string;
@@ -47,6 +49,7 @@ interface ProductForm {
 
 interface EmiForm {
   productId: string;
+  variantId: string;
   tenureMonths: string;
   monthlyAmount: string;
   interestRate: string;
@@ -70,6 +73,7 @@ const emptyProductForm = (): ProductForm => ({
 
 const emptyEmiForm = (): EmiForm => ({
   productId: "",
+  variantId: "",
   tenureMonths: "",
   monthlyAmount: "",
   interestRate: "",
@@ -158,37 +162,13 @@ function AdminDashboard() {
     }
   };
 
-  const fetchEmiPlans = async (productId: string) => {
-    try {
-      const response = await axios.get(
-        `${apiUrl}/emi-plans/product/${productId}`
-      );
-
-      return (response.data.plans ?? []) as EMIPlan[];
-    } catch (error) {
-      if (
-        axios.isAxiosError(error) &&
-        error.response?.status === 404
-      ) {
-        return [];
-      }
-
-      console.error(error);
-      return [];
-    }
-  };
-
   const loadEmiPlans = async () => {
-    if (products.length === 0) {
-      setEmiPlans([]);
-      return;
+    try {
+      const response = await axios.get(`${apiUrl}/admin/emi-plans`, { headers });
+      setEmiPlans(response.data.plans ?? []);
+    } catch (error) {
+      showError(getErrorMessage(error, "Unable to fetch EMI plans."));
     }
-
-    const results = await Promise.all(
-      products.map((product) => fetchEmiPlans(product._id))
-    );
-
-    setEmiPlans(results.flat());
   };
 
   useEffect(() => {
@@ -232,6 +212,7 @@ function AdminDashboard() {
       slug: product.slug,
       description: product.description || "",
       variants: product.variants.map((variant) => ({
+        _id: variant._id,
         color: variant.color,
         storage: variant.storage,
         mrp: String(variant.mrp),
@@ -457,6 +438,7 @@ function AdminDashboard() {
         slug: productForm.slug.trim().toLowerCase(),
         description: productForm.description.trim(),
         variants: productForm.variants.map((variant) => ({
+          ...(variant._id ? { _id: variant._id } : {}),
           color: variant.color.trim(),
           storage: variant.storage.trim(),
           mrp: Number(variant.mrp),
@@ -540,6 +522,7 @@ function AdminDashboard() {
     setEmiForm((prev) => ({
       ...prev,
       [field]: value,
+      ...(field === "productId" ? { variantId: "" } : {}),
     }));
   };
 
@@ -566,6 +549,7 @@ function AdminDashboard() {
       return "Please select a product.";
     }
 
+    if (!products.find(p => p._id === emiForm.productId)?.variants.some(v => v._id === emiForm.variantId)) return "Please select a valid variant.";
     const tenure = Number(emiForm.tenureMonths);
     const monthlyAmount = Number(emiForm.monthlyAmount);
     const interestRate = Number(emiForm.interestRate);
@@ -608,6 +592,7 @@ function AdminDashboard() {
 
       const payload = {
         productId: emiForm.productId,
+        variantId: emiForm.variantId,
         tenureMonths: Number(emiForm.tenureMonths),
         monthlyAmount: Number(emiForm.monthlyAmount),
         interestRate: Number(emiForm.interestRate),
@@ -624,7 +609,7 @@ function AdminDashboard() {
       setShowEmiModal(false);
       setEmiForm(emptyEmiForm());
 
-      const createdPlan = response.data?.plan as EMIPlan | undefined;
+      const createdPlan = response.data?.emiPlan as EMIPlan | undefined;
 
       if (createdPlan) {
         setEmiPlans((prev) => [...prev, createdPlan]);
@@ -941,7 +926,7 @@ function AdminDashboard() {
                               >
                                 <div>
                                   <p className="text-xs font-semibold text-slate-700">
-                                    {plan.tenureMonths} months
+                                    {product.variants.find(v => v._id === plan.variantId)?.color ?? "Needs migration"} / {product.variants.find(v => v._id === plan.variantId)?.storage ?? ""} · {plan.tenureMonths} months
                                   </p>
 
                                   <p className="text-xs text-slate-400">
@@ -1473,6 +1458,18 @@ function AdminDashboard() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="label">Variant</label>
+                <select className="input" value={emiForm.variantId} disabled={!emiForm.productId}
+                  onChange={event => handleEmiChange("variantId", event.target.value)} required>
+                  <option value="">Select a variant</option>
+                  {products.find(p => p._id === emiForm.productId)?.variants.map(v => (
+                    <option key={v._id} value={v._id}>{v.color} / {v.storage} / INR {v.price.toLocaleString("en-IN")}</option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-slate-500">Monthly amounts are admin-configured. Verify repayment and interest terms before creating.</p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">

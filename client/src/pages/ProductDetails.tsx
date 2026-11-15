@@ -42,6 +42,7 @@ interface Product {
 interface EMIPlan {
   _id: string;
   productId: string;
+  variantId: string;
   tenureMonths: number;
   monthlyAmount: number;
   interestRate: number;
@@ -192,37 +193,28 @@ export default function ProductDetails() {
    */
 
   useEffect(() => {
-    if (!product?._id) return;
-
+    setEmiPlans([]);
+    setSelectedPlanId("");
+    if (!product?._id || !selectedVariantId) return;
+    const controller = new AbortController();
     const fetchEMIPlans = async () => {
+      setLoadingPlans(true);
+      setError("");
       try {
-        setLoadingPlans(true);
-        setError("");
-
         const response = await axios.get<EMIResponse>(
-          `${apiUrl}/emi-plans/product/${product._id}`
+          `${apiUrl}/emi-plans/product/${product._id}`,
+          { params: { variantId: selectedVariantId }, signal: controller.signal }
         );
-
-        const plans = response.data.plans ?? [];
-
-        setEmiPlans(plans);
-        setSelectedPlanId(plans[0]?._id ?? "");
-      } catch (error) {
-        console.error("Failed to fetch EMI plans:", error);
-
-        setEmiPlans([]);
-        setSelectedPlanId("");
-
-        setError(
-          "Unable to load EMI plans for this product."
-        );
+        if (!controller.signal.aborted) setEmiPlans(response.data.plans ?? []);
+      } catch {
+        if (!controller.signal.aborted) setError("Unable to load EMI plans for this variant.");
       } finally {
-        setLoadingPlans(false);
+        if (!controller.signal.aborted) setLoadingPlans(false);
       }
     };
-
-    fetchEMIPlans();
-  }, [product?._id]);
+    void fetchEMIPlans();
+    return () => controller.abort();
+  }, [product?._id, selectedVariantId]);
 
   /*
    * ============================================================
@@ -248,9 +240,9 @@ export default function ProductDetails() {
 
   const selectedPlan = useMemo(() => {
     return emiPlans.find(
-      (plan) => plan._id === selectedPlanId
+      (plan) => plan._id === selectedPlanId && plan.variantId === selectedVariantId && plan.productId === product?._id
     );
-  }, [emiPlans, selectedPlanId]);
+  }, [emiPlans, selectedPlanId, selectedVariantId, product?._id]);
 
   const discountPercent = selectedVariant
     ? selectedVariant.discount ??
@@ -594,7 +586,7 @@ export default function ProductDetails() {
                         key={variant._id}
                         type="button"
                         onClick={() =>
-                          setSelectedVariantId(variant._id)
+                          { setSelectedPlanId(""); setEmiPlans([]); setSelectedVariantId(variant._id); }
                         }
                         className={`relative rounded-2xl border p-3 text-left transition ${
                           isSelected

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { Product } from "../../models/Product.js";
 import { EMIPlan } from "../../models/EMIPlan.js";
 
@@ -47,21 +48,16 @@ export async function getProductsBySlug(req: Request, res: Response){
 }
 export async function getEmiPlans(req: Request, res: Response){
     try{
-        const productId = req.params.productId;
-        if(!productId){
-            return res.status(404).json({
-                message: "Please enter the valid productId"
-            });
-        }
-        const plans = await EMIPlan.find({
-            productId: productId,
-            isActive: true
-        })
-        if(plans.length === 0){
-            return res.status(404).json({
-                message: "No Plans found",
-            });
-        }
+        const ids = z.object({
+            productId: z.string().regex(/^[a-fA-F0-9]{24}$/),
+            variantId: z.string().regex(/^[a-fA-F0-9]{24}$/)
+        }).safeParse({ productId: req.params.productId, variantId: req.query.variantId });
+        if (!ids.success) return res.status(400).json({ message: "Valid productId and variantId are required" });
+        const { productId, variantId } = ids.data;
+        const product = await Product.findById(productId);
+        if (!product) return res.status(404).json({ message: "Product not found" });
+        if (!product.variants.id(variantId)) return res.status(404).json({ message: "Variant not found for this product" });
+        const plans = await EMIPlan.find({ productId, variantId, isActive: true });
         res.status(200).json({
             message: "Plan Fetched Successfully",
             plans: plans

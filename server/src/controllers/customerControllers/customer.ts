@@ -58,12 +58,13 @@ export async function makeOrder(req: Request, res: Response) {
     const emiPlan = await EMIPlan.findOne({
       _id: emiPlanId,
       productId: productId,
+      variantId: variantId,
       isActive: true,
     });
 
     if (!emiPlan) {
       return res.status(404).json({
-        message: "EMI plan not found or is currently inactive",
+        message: "EMI plan does not belong to this product and variant, or is inactive",
       });
     }
 

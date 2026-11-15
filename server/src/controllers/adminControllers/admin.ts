@@ -2,9 +2,13 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import mongoose from "mongoose";
 import { Product } from "../../models/Product.js";
+import { User } from "../../models/User.js";
 import { EMIPlan } from "../../models/EMIPlan.js";
 
+const objectId = z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ObjectId");
+
 const variantSchema = z.object({
+    _id: objectId.optional(),
     color: z.string().min(1),
     storage: z.string().min(1),
     mrp: z.number().positive(),
@@ -32,7 +36,8 @@ const updateProductSchema = z.object({
 );
 
 const emiPlanSchema = z.object({
-    productId: z.string(),
+    productId: objectId,
+    variantId: objectId,
     tenureMonths: z.number().int().positive(),
     monthlyAmount: z.number().positive(),
     interestRate: z.number().min(0),
@@ -78,6 +83,21 @@ export async function updateProduct(req: Request, res: Response) {
                 errors: result.error.format()
             });
         }
+        if (result.data.variants) {
+            const existing = await Product.findById(id);
+            if (!existing) return res.status(404).json({ message: "Product not found" });
+            const kept = new Set(result.data.variants.flatMap(v => v._id ? [v._id] : []));
+            for (const variant of result.data.variants) {
+                if (variant._id && !existing.variants.id(variant._id)) {
+                    return res.status(400).json({ message: "Variant does not belong to this product" });
+                }
+            }
+            const removed = existing.variants.filter(v => !kept.has(v._id.toString())).map(v => v._id);
+            if (removed.length && (await EMIPlan.exists({ productId: existing._id, variantId: { $in: removed } }) ||
+                await User.exists({ orders: { $elemMatch: { productId: existing._id, variantId: { $in: removed } } } }))) {
+                return res.status(409).json({ message: "Cannot remove variants referenced by EMI plans or orders" });
+            }
+        }
         const product = await Product.findByIdAndUpdate(
             id,
             result.data,
@@ -112,6 +132,12 @@ export async function updateProduct(req: Request, res: Response) {
 export async function deleteProduct(req: Request, res: Response) {
     try {
         const id = req.params.id;
+        if (typeof id !== "string" || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid product ID" });
+        }
+        if (await User.exists({ "orders.productId": new mongoose.Types.ObjectId(id) })) {
+            return res.status(409).json({ message: "Cannot delete a product referenced by existing orders" });
+        }
         const product = await Product.findByIdAndDelete(id);
         if (!product) {
             return res.status(404).json({
@@ -141,7 +167,7 @@ export async function createEmiPlan(req: Request, res: Response) {
                 errors: result.error.format()
             });
         }
-        const { productId, tenureMonths, monthlyAmount, interestRate, cashback } = result.data;
+        const { productId, variantId, tenureMonths, monthlyAmount, interestRate, cashback } = result.data;
         if (!mongoose.Types.ObjectId.isValid(productId)) {
             return res.status(400).json({
                 message: "Invalid product ID"
@@ -154,8 +180,13 @@ export async function createEmiPlan(req: Request, res: Response) {
             });
         }
 
+        if (!product.variants.id(variantId)) {
+            return res.status(400).json({ message: "Variant does not belong to this product" });
+        }
+
         const emiPlan = await EMIPlan.create({
             productId,
+            variantId,
             tenureMonths,
             monthlyAmount,
             interestRate,
@@ -184,8 +215,15 @@ export async function toggleEmiPlan(req: Request, res: Response) {
                 message: "EMI plan not found"
             });
         }
+        if (!emiPlan.isActive) {
+            const product = await Product.findById(emiPlan.productId);
+            if (!emiPlan.variantId || !product?.variants.id(emiPlan.variantId)) {
+                return res.status(400).json({ message: "Assign this plan to a valid variant before activation" });
+            }
+        }
         emiPlan.isActive = !emiPlan.isActive;
-        await emiPlan.save();
+        // Permit deactivation of legacy plans pending migration.
+        await emiPlan.save({ validateModifiedOnly: true });
         return res.status(200).json({
             message: `EMI plan ${
                 emiPlan.isActive ? "activated" : "deactivated"
@@ -197,5 +235,12 @@ export async function toggleEmiPlan(req: Request, res: Response) {
         return res.status(500).json({
             message: "Error toggling EMI plan"
         });
+    }
+}
+export async function listEmiPlans(_req: Request, res: Response) {
+    try {
+        return res.json({ plans: await EMIPlan.find() });
+    } catch {
+        return res.status(500).json({ message: "Unable to fetch EMI plans" });
     }
 }
